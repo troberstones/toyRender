@@ -1,0 +1,18 @@
+// Lightweight reference passed into the accel structure at build time.
+// Avoids a circular dependency between accel <-> scene.
+const math = @import("math");
+const Ray = math.Ray;
+const AABB = math.AABB;
+const geometry = @import("geometry");
+const HitRecord = geometry.HitRecord;
+
+pub const InstanceRef = struct {
+    bbox: AABB,
+    // Opaque pointer back to the owning Instance; caller casts it.
+    ptr: *const anyopaque,
+    intersectFn: *const fn (ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32) ?HitRecord,
+
+    pub fn intersect(self: InstanceRef, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
+        return self.intersectFn(self.ptr, ray, t_min, t_max);
+    }
+};

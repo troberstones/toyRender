@@ -1,0 +1,16 @@
+.{
+    .name = .toyRender,
+    .fingerprint = 0x194f9c67f8dc48e6,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        // To add zigimg for PNG I/O:
+        //   zig fetch --save https://github.com/zigimg/zigimg/archive/<commit>.tar.gz
+        // then uncomment and wire it into build.zig as a module dependency.
+        // .zigimg = .{
+        //     .url = "https://...",
+        //     .hash = "...",
+        // },
+    },
+    .paths = .{"."},
+}

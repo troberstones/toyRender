@@ -1,0 +1,38 @@
+{
+  "camera": {
+    "type": "pinhole",
+    "fov_y": 40,
+    "from": [0.0, 1.0, 4.0],
+    "to":   [0.0, 1.0, 0.0],
+    "up":   [0.0, 1.0, 0.0]
+  },
+  "background": [0.0, 0.0, 0.0],
+  "materials": [
+    { "id": "white",  "type": "lambertian", "albedo": [0.73, 0.73, 0.73] },
+    { "id": "red",    "type": "lambertian", "albedo": [0.65, 0.05, 0.05] },
+    { "id": "green",  "type": "lambertian", "albedo": [0.12, 0.45, 0.15] },
+    { "id": "light",  "type": "lambertian", "albedo": [1.0,  1.0,  1.0 ], "emission": [15.0, 15.0, 12.0] },
+    { "id": "mirror", "type": "specular",   "reflectance": [1.0, 1.0, 1.0] },
+    { "id": "glass",  "type": "dielectric", "ior": 1.5, "tint": [1.0, 1.0, 1.0] }
+  ],
+  "objects": [
+    { "comment": "floor",        "type": "obj", "path": "meshes/floor.obj",    "material": "white" },
+    { "comment": "ceiling",      "type": "obj", "path": "meshes/ceiling.obj",  "material": "white" },
+    { "comment": "back wall",    "type": "obj", "path": "meshes/back.obj",     "material": "white" },
+    { "comment": "left wall",    "type": "obj", "path": "meshes/left.obj",     "material": "red"   },
+    { "comment": "right wall",   "type": "obj", "path": "meshes/right.obj",    "material": "green" },
+    { "comment": "light panel",  "type": "obj", "path": "meshes/light.obj",    "material": "light" },
+    { "comment": "short block",  "type": "obj", "path": "meshes/short_box.obj","material": "white",
+      "transform": { "translate": [0.0, 0.0, 0.0] } },
+    { "comment": "tall block",   "type": "obj", "path": "meshes/tall_box.obj", "material": "mirror",
+      "transform": { "translate": [0.0, 0.0, 0.0] } },
+    { "comment": "glass sphere", "type": "sphere", "center": [-0.4, 0.3, -0.5], "radius": 0.3, "material": "glass" }
+  ],
+  "lights": [
+    {
+      "type": "area",
+      "instance": "light panel",
+      "emission": [15.0, 15.0, 12.0]
+    }
+  ]
+}
