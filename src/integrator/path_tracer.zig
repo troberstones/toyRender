@@ -78,7 +78,7 @@ pub const PathTracer = struct {
 
             // Record segment for path visualization.
             if (record) |rec| {
-                rec.segments.append(.{
+                rec.segments.append(rec.alloc, .{
                     .origin = hit.point,
                     .direction = bsdf_sample.wi,
                     .length = 0, // filled in on next hit

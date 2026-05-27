@@ -9,7 +9,7 @@ pub const Counters = struct {
     start_ns: i128 = 0,
 
     pub fn start(self: *Counters) void {
-        self.start_ns = std.time.nanoTimestamp();
+        self.start_ns = monoNs();
     }
 
     pub fn addRay(self: *Counters) void {
@@ -29,7 +29,7 @@ pub const Counters = struct {
     }
 
     pub fn report(self: *const Counters, writer: anytype) !void {
-        const elapsed_ns = std.time.nanoTimestamp() - self.start_ns;
+        const elapsed_ns = monoNs() - self.start_ns;
         const elapsed_s = @as(f64, @floatFromInt(elapsed_ns)) * 1e-9;
         const rays = self.rays_cast.load(.monotonic);
         const samples = self.samples_completed.load(.monotonic);
@@ -55,6 +55,12 @@ pub const Counters = struct {
 };
 
 pub var global = Counters{};
+
+fn monoNs() i128 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
+    return @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec;
+}
 
 test "counters compile" {
     var c = Counters{};

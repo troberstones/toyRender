@@ -89,9 +89,11 @@ pub fn build(b: *std.Build) void {
     // --- Executable ---
     const exe = b.addExecutable(.{
         .name = "toyRender",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addImport("math", math_mod);
     exe.root_module.addImport("geometry", geometry_mod);
@@ -107,8 +109,14 @@ pub fn build(b: *std.Build) void {
     options.addOption(bool, "interactive", interactive);
     exe.root_module.addOptions("build_options", options);
     if (interactive) {
-        exe.linkSystemLibrary("SDL2");
-        exe.linkLibC();
+        exe.root_module.linkSystemLibrary("SDL2", .{});
+        exe.root_module.link_libc = true;
+        // Compile the SDL2 C shim with system headers (avoids Zig's bundled
+        // arm_neon.h which has ARM builtins Zig 0.16's translate-c can't handle).
+        exe.root_module.addCSourceFile(.{
+            .file = b.path("src/display/sdl2_bind.c"),
+            .flags = &.{"-I/opt/homebrew/include"},
+        });
     }
     b.installArtifact(exe);
 
@@ -121,9 +129,11 @@ pub fn build(b: *std.Build) void {
 
     // --- Test step ---
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/test/tests.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/test/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     unit_tests.root_module.addImport("math", math_mod);
     unit_tests.root_module.addImport("geometry", geometry_mod);

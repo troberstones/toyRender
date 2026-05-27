@@ -10,7 +10,7 @@ pub const Halton = struct {
 
     pub fn startPixel(self: *Halton, px: u32, py: u32, sample_idx: u32) void {
         // Scramble per-pixel to decorrelate neighboring pixels.
-        self.pixel_offset = px * 1234567 +% py * 7654321;
+        self.pixel_offset = px *% 1234567 +% py *% 7654321;
         self.index = sample_idx;
     }
 

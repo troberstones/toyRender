@@ -37,12 +37,12 @@ const Config = struct {
     viz_paths: bool = false,
 };
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init.Minimal) !void {
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const cfg = try parseArgs(alloc);
+    const cfg = parseArgs(init.args);
 
     var scene = if (cfg.scene_path) |p|
         try SceneLoader.loadJson(alloc, p)
@@ -119,8 +119,10 @@ fn renderOffline(
 
     if (cfg.viz_paths) path_viz.overlayOnFilm(film, scene.camera);
 
-    const stdout = std.io.getStdOut().writer();
-    try perf.global.report(stdout);
+    var buf: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(std.Options.debug_io, &buf);
+    try perf.global.report(&stdout_writer.interface);
+    try stdout_writer.interface.flush();
 }
 
 fn runInteractive(
@@ -142,12 +144,12 @@ fn runInteractive(
             switch (ev) {
                 .quit => running = false,
                 .key_press => |key| handleKey(key, scene, film, &spp),
-                .mouse_drag => |_| {
+                .mouse_drag => {
                     // TODO: orbit camera around scene center
                     film.clear();
                     spp = 0;
                 },
-                .mouse_scroll => |_| {
+                .mouse_scroll => {
                     // TODO: dolly zoom
                     film.clear();
                     spp = 0;
@@ -171,7 +173,8 @@ fn runInteractive(
         }
 
         disp.update(film, cfg.tonemap);
-        std.time.sleep(16 * std.time.ns_per_ms); // ~60 fps cap
+        const ts = std.c.timespec{ .sec = 0, .nsec = 16 * std.time.ns_per_ms };
+        _ = std.c.nanosleep(&ts, null); // ~60 fps cap
     }
 }
 
@@ -184,9 +187,83 @@ fn handleKey(key: u32, scene: *Scene, film: *Film, spp: *u32) void {
     }
 }
 
-fn parseArgs(alloc: std.mem.Allocator) !Config {
-    _ = alloc;
-    // TODO: use std.process.argsAlloc + a proper argument parser
-    // For now, return defaults.
-    return .{};
+fn parseArgs(args: std.process.Args) Config {
+    var cfg = Config{};
+    var it = std.process.Args.Iterator.init(args);
+    _ = it.skip(); // argv[0] is the program name
+
+    while (it.next()) |arg| {
+        if (eql(arg, "--help") or eql(arg, "-h")) {
+            printUsage();
+            std.process.exit(0);
+        } else if (eql(arg, "--mode")) {
+            const val = it.next() orelse std.process.fatal("--mode requires a value\n", .{});
+            cfg.mode = std.meta.stringToEnum(Mode, val) orelse
+                std.process.fatal("--mode: unknown value '{s}' (render|interactive|debug)\n", .{val});
+        } else if (eql(arg, "--scene")) {
+            cfg.scene_path = it.next() orelse std.process.fatal("--scene requires a path\n", .{});
+        } else if (eql(arg, "--output") or eql(arg, "-o")) {
+            cfg.output_path = it.next() orelse std.process.fatal("--output requires a path\n", .{});
+        } else if (eql(arg, "--width")) {
+            const val = it.next() orelse std.process.fatal("--width requires a value\n", .{});
+            cfg.width = std.fmt.parseInt(u32, val, 10) catch
+                std.process.fatal("--width: not a valid number\n", .{});
+        } else if (eql(arg, "--height")) {
+            const val = it.next() orelse std.process.fatal("--height requires a value\n", .{});
+            cfg.height = std.fmt.parseInt(u32, val, 10) catch
+                std.process.fatal("--height: not a valid number\n", .{});
+        } else if (eql(arg, "--spp")) {
+            const val = it.next() orelse std.process.fatal("--spp requires a value\n", .{});
+            cfg.spp = std.fmt.parseInt(u32, val, 10) catch
+                std.process.fatal("--spp: not a valid number\n", .{});
+        } else if (eql(arg, "--depth")) {
+            const val = it.next() orelse std.process.fatal("--depth requires a value\n", .{});
+            cfg.max_depth = std.fmt.parseInt(u32, val, 10) catch
+                std.process.fatal("--depth: not a valid number\n", .{});
+        } else if (eql(arg, "--tonemap")) {
+            const val = it.next() orelse std.process.fatal("--tonemap requires a value\n", .{});
+            cfg.tonemap = if (eql(val, "linear")) .linear
+                else if (eql(val, "reinhard")) .reinhard
+                else if (eql(val, "aces")) .aces
+                else std.process.fatal("--tonemap: unknown value '{s}' (linear|reinhard|aces)\n", .{val});
+        } else if (eql(arg, "--integrator")) {
+            const val = it.next() orelse std.process.fatal("--integrator requires a value\n", .{});
+            cfg.integrator = std.meta.stringToEnum(@TypeOf(cfg.integrator), val) orelse
+                std.process.fatal("--integrator: unknown value '{s}' (path|direct|debug)\n", .{val});
+        } else if (eql(arg, "--debug-mode")) {
+            const val = it.next() orelse std.process.fatal("--debug-mode requires a value\n", .{});
+            cfg.debug_mode = std.meta.stringToEnum(DebugView.DebugMode, val) orelse
+                std.process.fatal("--debug-mode: unknown value '{s}'\n", .{val});
+        } else if (eql(arg, "--viz-paths")) {
+            cfg.viz_paths = true;
+        } else {
+            std.process.fatal("unknown argument '{s}' — try --help\n", .{arg});
+        }
+    }
+    return cfg;
+}
+
+fn eql(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
+
+fn printUsage() void {
+    std.debug.print(
+        \\Usage: toyRender [options]
+        \\
+        \\Options:
+        \\  --mode <render|interactive|debug>   Render mode (default: render)
+        \\  --scene <path>                      JSON scene file (default: Cornell box)
+        \\  --output, -o <path>                 Output image (default: out.png)
+        \\  --width <n>                         Image width  (default: 800)
+        \\  --height <n>                        Image height (default: 600)
+        \\  --spp <n>                           Samples per pixel (default: 64)
+        \\  --depth <n>                         Max ray depth (default: 8)
+        \\  --tonemap <linear|reinhard|aces>    Tone mapping (default: aces)
+        \\  --integrator <path|direct|debug>    Integrator (default: path)
+        \\  --debug-mode <normals|shading_normals|albedo|depth|uv|path_length>
+        \\  --viz-paths                         Overlay path visualization
+        \\  --help, -h                          Show this help
+        \\
+    , .{});
 }

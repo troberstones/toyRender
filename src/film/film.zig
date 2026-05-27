@@ -60,27 +60,25 @@ pub const Film = struct {
             }
         }
 
-        var idat_buf = std.ArrayList(u8).init(self.alloc);
-        defer idat_buf.deinit();
-        var comp = try std.compress.zlib.compressor(idat_buf.writer(), .{});
-        try comp.writer().writeAll(raw);
-        try comp.finish();
+        const idat_data = try zlibStored(self.alloc, raw);
+        defer self.alloc.free(idat_data);
 
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        var bw = std.io.bufferedWriter(file.writer());
-        const fw = bw.writer();
+        const io = std.Options.debug_io;
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        var fw_buf: [65536]u8 = undefined;
+        var fw = file.writer(io, &fw_buf);
 
-        try fw.writeAll("\x89PNG\r\n\x1a\n");
+        try fw.interface.writeAll("\x89PNG\r\n\x1a\n");
 
         var ihdr: [13]u8 = undefined;
         std.mem.writeInt(u32, ihdr[0..4], self.width, .big);
         std.mem.writeInt(u32, ihdr[4..8], self.height, .big);
         ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-        try pngChunk(fw, "IHDR", &ihdr);
-        try pngChunk(fw, "IDAT", idat_buf.items);
-        try pngChunk(fw, "IEND", &[_]u8{});
-        try bw.flush();
+        try pngChunk(&fw.interface, "IHDR", &ihdr);
+        try pngChunk(&fw.interface, "IDAT", idat_data);
+        try pngChunk(&fw.interface, "IEND", &[_]u8{});
+        try fw.interface.flush();
     }
 
     // Write a scanline OpenEXR (half-float, 3 channels).
@@ -116,11 +114,53 @@ pub const Film = struct {
     }
 };
 
-fn pngChunk(w: anytype, tag: *const [4]u8, data: []const u8) !void {
-    try w.writeInt(u32, @intCast(data.len), .big);
+// Build a valid zlib stream using uncompressed (stored) deflate blocks.
+// Produces larger output than a real compressor but works without the
+// std.compress.flate internals that are incomplete in Zig 0.15.1.
+fn zlibStored(alloc: std.mem.Allocator, data: []const u8) ![]u8 {
+    const max_block: usize = 65535;
+    const n_blocks: usize = if (data.len == 0) 1 else (data.len + max_block - 1) / max_block;
+    // 2 zlib header + (5 per block header) + raw data + 4 Adler-32
+    const out = try alloc.alloc(u8, 2 + n_blocks * 5 + data.len + 4);
+
+    var pos: usize = 0;
+    out[pos] = 0x78; out[pos + 1] = 0x01; pos += 2; // CMF=deflate CINFO=0, FLG
+
+    var offset: usize = 0;
+    var done = false;
+    while (!done) {
+        const end = @min(offset + max_block, data.len);
+        const chunk = data[offset..end];
+        const len: u16 = @intCast(chunk.len);
+        done = (end == data.len);
+        out[pos] = if (done) 0x01 else 0x00; pos += 1;        // BFINAL | BTYPE=00
+        std.mem.writeInt(u16, out[pos..][0..2], len, .little); pos += 2;
+        std.mem.writeInt(u16, out[pos..][0..2], ~len, .little); pos += 2;
+        @memcpy(out[pos..][0..chunk.len], chunk);
+        pos += chunk.len;
+        offset = end;
+    }
+
+    // Adler-32 over uncompressed data
+    var s1: u32 = 1;
+    var s2: u32 = 0;
+    for (data) |b| {
+        s1 = (s1 + b) % 65521;
+        s2 = (s2 + s1) % 65521;
+    }
+    std.mem.writeInt(u32, out[pos..][0..4], (s2 << 16) | s1, .big);
+
+    return out;
+}
+
+fn pngChunk(w: *std.Io.Writer, tag: *const [4]u8, data: []const u8) !void {
+    var hdr: [4]u8 = undefined;
+    std.mem.writeInt(u32, &hdr, @intCast(data.len), .big);
+    try w.writeAll(&hdr);
     try w.writeAll(tag);
     try w.writeAll(data);
-    try w.writeInt(u32, pngCrc(tag, data), .big);
+    std.mem.writeInt(u32, &hdr, pngCrc(tag, data), .big);
+    try w.writeAll(&hdr);
 }
 
 fn pngCrc(tag: []const u8, data: []const u8) u32 {

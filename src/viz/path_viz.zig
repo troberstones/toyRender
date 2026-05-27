@@ -29,7 +29,7 @@ pub const PathViz = struct {
 
     pub fn init(alloc: std.mem.Allocator, max_records: usize) PathViz {
         return .{
-            .records = std.ArrayList(PathRecord).init(alloc),
+            .records = .empty,
             .alloc = alloc,
             .max_records = max_records,
         };
@@ -37,12 +37,12 @@ pub const PathViz = struct {
 
     pub fn deinit(self: *PathViz) void {
         for (self.records.items) |*r| r.deinit();
-        self.records.deinit();
+        self.records.deinit(self.alloc);
     }
 
     pub fn addRecord(self: *PathViz, record: PathRecord) !void {
         if (self.records.items.len >= self.max_records) return;
-        try self.records.append(record);
+        try self.records.append(self.alloc, record);
     }
 
     // Rasterize path segments as colored lines onto the film.

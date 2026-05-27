@@ -26,13 +26,14 @@ pub const PathSegment = struct {
 
 pub const PathRecord = struct {
     segments: std.ArrayList(PathSegment),
+    alloc: std.mem.Allocator,
 
     pub fn init(alloc: std.mem.Allocator) PathRecord {
-        return .{ .segments = std.ArrayList(PathSegment).init(alloc) };
+        return .{ .segments = .empty, .alloc = alloc };
     }
 
     pub fn deinit(self: *PathRecord) void {
-        self.segments.deinit();
+        self.segments.deinit(self.alloc);
     }
 
     pub fn reset(self: *PathRecord) void {
