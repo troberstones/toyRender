@@ -1,6 +1,7 @@
 const std = @import("std");
 const math = @import("math");
 const Ray = math.Ray;
+const perf = @import("perf");
 const Spectrum = math.Spectrum;
 const geometry = @import("geometry");
 const HitRecord = geometry.HitRecord;
@@ -23,6 +24,7 @@ pub const Scene = struct {
     alloc: std.mem.Allocator,
 
     pub fn intersect(self: *const Scene, ray: Ray) ?HitRecord {
+        perf.global.addRay();
         var closest = ray.t_max;
         var best: ?HitRecord = null;
         for (self.instances) |*inst| {
@@ -37,6 +39,7 @@ pub const Scene = struct {
     }
 
     pub fn intersectAny(self: *const Scene, ray: Ray, max_t: f32) bool {
+        perf.global.addShadowRay();
         for (self.instances) |*inst| {
             if (inst.intersectT(ray, ray.t_min, max_t) != null) return true;
         }

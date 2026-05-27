@@ -4,7 +4,7 @@ const std = @import("std");
 // Import test modules
 comptime {
     _ = @import("white_furnace.zig");
-    _ = @import("perf.zig");
+    _ = @import("perf");
 }
 
 // Import module-local tests

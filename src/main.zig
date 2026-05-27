@@ -17,7 +17,7 @@ const Film = film_mod.Film;
 const Tonemap = film_mod.Tonemap;
 const viz_mod = @import("viz");
 const PathViz = viz_mod.PathViz;
-const perf = @import("test/perf.zig");
+const perf = @import("perf");
 const build_options = @import("build_options");
 const have_sdl2 = build_options.interactive;
 
@@ -89,6 +89,9 @@ fn renderOffline(
     var path_viz = PathViz.init(alloc, 256);
     defer path_viz.deinit();
 
+    // Print a live progress line to stderr roughly once per second.
+    var last_progress_ns: i128 = 0;
+
     for (0..cfg.spp) |spp_idx| {
         for (0..cfg.height) |row| {
             for (0..cfg.width) |col| {
@@ -98,7 +101,7 @@ fn renderOffline(
                 const px = (@as(f32, @floatFromInt(col)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.width));
                 const py = (@as(f32, @floatFromInt(row)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.height));
                 const ray = scene.camera.generateRay(px, py, sampler.next2d());
-                perf.global.addRay();
+                // Ray counting now happens inside scene.intersect / scene.intersectAny.
 
                 const value = if (cfg.viz_paths) blk: {
                     var rec = PathRecord.init(alloc);
@@ -111,11 +114,16 @@ fn renderOffline(
                 film.addSample(@intCast(col), @intCast(row), value);
                 perf.global.addSamples(1);
             }
-        }
-        if (spp_idx % 8 == 0) {
-            std.log.info("spp {}/{}", .{ spp_idx + 1, cfg.spp });
+
+            // Refresh the live Mrays/s line at most once per second.
+            const now = perf.global.elapsedNs();
+            if (now - last_progress_ns >= std.time.ns_per_s) {
+                last_progress_ns = now;
+                perf.global.printProgress(@intCast(spp_idx + 1), @intCast(cfg.spp));
+            }
         }
     }
+    std.debug.print("\n", .{}); // finish the \r progress line
 
     if (cfg.viz_paths) path_viz.overlayOnFilm(film, scene.camera);
 

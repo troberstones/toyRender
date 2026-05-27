@@ -6,6 +6,10 @@ pub fn build(b: *std.Build) void {
 
     // --- Modules (ordered by dependency depth) ---
 
+    const perf_mod = b.addModule("perf", .{
+        .root_source_file = b.path("src/test/perf.zig"),
+    });
+
     const math_mod = b.addModule("math", .{
         .root_source_file = b.path("src/math/root.zig"),
     });
@@ -57,6 +61,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "accel", .module = accel_mod },
             .{ .name = "material", .module = material_mod },
             .{ .name = "light", .module = light_mod },
+            .{ .name = "perf", .module = perf_mod },
         },
     });
 
@@ -95,6 +100,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    exe.root_module.addImport("perf", perf_mod);
     exe.root_module.addImport("math", math_mod);
     exe.root_module.addImport("geometry", geometry_mod);
     exe.root_module.addImport("accel", accel_mod);
@@ -141,6 +147,7 @@ pub fn build(b: *std.Build) void {
     unit_tests.root_module.addImport("scene", scene_mod);
     unit_tests.root_module.addImport("sampler", sampler_mod);
     unit_tests.root_module.addImport("film", film_mod);
+    unit_tests.root_module.addImport("perf", perf_mod);
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
