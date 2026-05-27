@@ -11,19 +11,19 @@ pub const Sphere = struct {
     radius: f32,
     material_index: u32,
 
-    pub fn intersect(self: Sphere, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
+    pub fn intersect(self: Sphere, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
         const oc = Vec3.sub(ray.origin, self.center);
         const a = Vec3.lengthSq(ray.direction);
         const half_b = Vec3.dot(oc, ray.direction);
         const c = Vec3.lengthSq(oc) - self.radius * self.radius;
         const discriminant = half_b * half_b - a * c;
-        if (discriminant < 0) return null;
+        if (discriminant < 0) return false;
 
         const sqrt_d = @sqrt(discriminant);
         var root = (-half_b - sqrt_d) / a;
         if (root <= t_min or root >= t_max) {
             root = (-half_b + sqrt_d) / a;
-            if (root <= t_min or root >= t_max) return null;
+            if (root <= t_min or root >= t_max) return false;
         }
 
         const point = ray.at(root);
@@ -31,17 +31,19 @@ pub const Sphere = struct {
         const front_face = Vec3.dot(ray.direction, outward_normal) < 0;
         const normal = if (front_face) outward_normal else Vec3.neg(outward_normal);
 
-        return HitRecord{
+        // Write directly to caller's storage — no intermediate copy.
+        // UV deferred: the acos/atan2 spherical mapping was ~23% of render
+        // time and no current material reads it. Call sphericalUv() on demand.
+        out.* = .{
             .t = root,
             .point = point,
             .normal = normal,
             .shading_normal = normal,
-            // UV deferred: the acos/atan2 spherical mapping was ~23% of render
-            // time and no current material reads it. Call sphericalUv() on demand.
             .uv = .{ 0, 0 },
             .material_index = self.material_index,
             .front_face = front_face,
         };
+        return true;
     }
 
     // Spherical (longitude/latitude) UV from an outward unit normal.
@@ -105,11 +107,11 @@ pub const Plane = struct {
     half_extents: ?[2]f32,
     material_index: u32,
 
-    pub fn intersect(self: Plane, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
+    pub fn intersect(self: Plane, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
         const denom = Vec3.dot(self.normal, ray.direction);
-        if (@abs(denom) < 1e-8) return null;
+        if (@abs(denom) < 1e-8) return false;
         const t = Vec3.dot(Vec3.sub(self.point, ray.origin), self.normal) / denom;
-        if (t < t_min or t > t_max) return null;
+        if (t < t_min or t > t_max) return false;
 
         if (self.half_extents) |ext| {
             const hit_p = ray.at(t);
@@ -121,7 +123,7 @@ pub const Plane = struct {
 
         const front_face = Vec3.dot(ray.direction, self.normal) < 0;
         const n = if (front_face) self.normal else Vec3.neg(self.normal);
-        return HitRecord{
+        out.* = .{
             .t = t,
             .point = ray.at(t),
             .normal = n,
@@ -130,6 +132,7 @@ pub const Plane = struct {
             .material_index = self.material_index,
             .front_face = front_face,
         };
+        return true;
     }
 
     pub fn intersectT(self: Plane, ray: Ray, t_min: f32, t_max: f32) ?f32 {

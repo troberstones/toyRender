@@ -30,14 +30,14 @@ pub const Instance = struct {
         return self;
     }
 
-    pub fn intersect(self: *const Instance, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
-        if (!self.world_bbox.intersect(ray, t_min, t_max)) return null;
+    pub fn intersect(self: *const Instance, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
+        if (!self.world_bbox.intersect(ray, t_min, t_max)) return false;
 
         // Identity transform: object space == world space, no matrix work needed.
         if (self.is_identity) {
-            var hit = self.geometry.intersect(ray, t_min, t_max) orelse return null;
-            hit.material_index = self.material_index;
-            return hit;
+            if (!self.geometry.intersect(ray, t_min, t_max, out)) return false;
+            out.material_index = self.material_index;
+            return true;
         }
 
         const o_ray = Ray{
@@ -48,13 +48,14 @@ pub const Instance = struct {
             .t_max = t_max,
         };
 
-        var hit = self.geometry.intersect(o_ray, t_min, t_max) orelse return null;
-
-        hit.point = Mat4.transformPoint(self.object_to_world, hit.point);
-        hit.normal = Mat4.transformNormal(self.world_to_object, hit.normal);
-        hit.shading_normal = Mat4.transformNormal(self.world_to_object, hit.shading_normal);
-        hit.material_index = self.material_index;
-        return hit;
+        // Geometry writes to *out directly; we then transform the world-space
+        // fields in place — no intermediate HitRecord copy.
+        if (!self.geometry.intersect(o_ray, t_min, t_max, out)) return false;
+        out.point = Mat4.transformPoint(self.object_to_world, out.point);
+        out.normal = Mat4.transformNormal(self.world_to_object, out.normal);
+        out.shading_normal = Mat4.transformNormal(self.world_to_object, out.shading_normal);
+        out.material_index = self.material_index;
+        return true;
     }
 
     // Fast t-only test for shadow rays — skips normal/UV/transform-back.

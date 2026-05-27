@@ -37,9 +37,9 @@ pub const Geometry = union(enum) {
     sphere: Sphere,
     plane: Plane,
 
-    pub fn intersect(self: Geometry, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
+    pub fn intersect(self: Geometry, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
         return switch (self) {
-            inline else => |g| g.intersect(ray, t_min, t_max),
+            inline else => |g| g.intersect(ray, t_min, t_max, out),
         };
     }
 

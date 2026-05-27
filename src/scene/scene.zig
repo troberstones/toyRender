@@ -25,17 +25,18 @@ pub const Scene = struct {
 
     pub fn intersect(self: *const Scene, ray: Ray) ?HitRecord {
         perf.global.addRay();
+        var best: HitRecord = undefined;
+        var found = false;
         var closest = ray.t_max;
-        var best: ?HitRecord = null;
         for (self.instances) |*inst| {
-            // Instance.intersect includes world_bbox pre-cull; shrinking t_max
-            // lets it also reject instances beyond the current closest hit.
-            if (inst.intersect(ray, ray.t_min, closest)) |hit| {
-                closest = hit.t;
-                best = hit;
+            // Instance writes directly into best; shrinking closest lets the
+            // bbox pre-cull reject instances behind the current best hit.
+            if (inst.intersect(ray, ray.t_min, closest, &best)) {
+                closest = best.t;
+                found = true;
             }
         }
-        return best;
+        return if (found) best else null;
     }
 
     pub fn intersectAny(self: *const Scene, ray: Ray, max_t: f32) bool {

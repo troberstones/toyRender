@@ -23,17 +23,17 @@ pub const TriangleMesh = struct {
     // Precomputed bounding box over all vertices.
     bounds: AABB,
 
-    pub fn intersect(self: TriangleMesh, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
+    pub fn intersect(self: TriangleMesh, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
         var closest = t_max;
-        var best: ?HitRecord = null;
+        var found = false;
 
         for (self.triangles) |tri| {
-            if (intersectTriangle(self, tri, ray, t_min, closest)) |hit| {
-                closest = hit.t;
-                best = hit;
+            if (intersectTriangle(self, tri, ray, t_min, closest, out)) {
+                closest = out.t;
+                found = true;
             }
         }
-        return best;
+        return found;
     }
 
     fn intersectTriangle(
@@ -42,7 +42,8 @@ pub const TriangleMesh = struct {
         ray: Ray,
         t_min: f32,
         t_max: f32,
-    ) ?HitRecord {
+        out: *HitRecord,
+    ) bool {
         const v0 = self.vertices[tri.indices[0]].position;
         const v1 = self.vertices[tri.indices[1]].position;
         const v2 = self.vertices[tri.indices[2]].position;
@@ -53,19 +54,19 @@ pub const TriangleMesh = struct {
         const h = Vec3.cross(ray.direction, e2);
         const det = Vec3.dot(e1, h);
 
-        if (@abs(det) < 1e-8) return null; // parallel
+        if (@abs(det) < 1e-8) return false; // parallel
 
         const inv_det = 1.0 / det;
         const s = Vec3.sub(ray.origin, v0);
         const u = Vec3.dot(s, h) * inv_det;
-        if (u < 0.0 or u > 1.0) return null;
+        if (u < 0.0 or u > 1.0) return false;
 
         const q = Vec3.cross(s, e1);
         const v = Vec3.dot(ray.direction, q) * inv_det;
-        if (v < 0.0 or u + v > 1.0) return null;
+        if (v < 0.0 or u + v > 1.0) return false;
 
         const t = Vec3.dot(e2, q) * inv_det;
-        if (t < t_min or t > t_max) return null;
+        if (t < t_min or t > t_max) return false;
 
         const w = 1.0 - u - v;
         const n0 = self.vertices[tri.indices[0]].normal;
@@ -89,7 +90,7 @@ pub const TriangleMesh = struct {
         const geom_n = Vec3.normalize(cross_e1e2);
         const normal = if (front_face) geom_n else Vec3.neg(geom_n);
 
-        return HitRecord{
+        out.* = .{
             .t = t,
             .point = ray.at(t),
             .normal = normal,
@@ -98,6 +99,7 @@ pub const TriangleMesh = struct {
             .material_index = self.material_index,
             .front_face = front_face,
         };
+        return true;
     }
 
     // Fast t-only test for shadow rays — skips normal/UV computation.

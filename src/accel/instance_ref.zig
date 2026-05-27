@@ -10,11 +10,11 @@ pub const InstanceRef = struct {
     bbox: AABB,
     // Opaque pointer back to the owning Instance; caller casts it.
     ptr: *const anyopaque,
-    intersectFn:  *const fn (ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32) ?HitRecord,
+    intersectFn:  *const fn (ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool,
     intersectTFn: *const fn (ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32) ?f32,
 
-    pub fn intersect(self: InstanceRef, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
-        return self.intersectFn(self.ptr, ray, t_min, t_max);
+    pub fn intersect(self: InstanceRef, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
+        return self.intersectFn(self.ptr, ray, t_min, t_max, out);
     }
 
     // Fast t-only test for shadow rays.

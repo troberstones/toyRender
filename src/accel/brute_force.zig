@@ -8,16 +8,17 @@ pub const BruteForce = struct {
     instances: []const InstanceRef,
 
     pub fn intersect(self: *BruteForce, ray: Ray) ?HitRecord {
+        var best: HitRecord = undefined;
+        var found = false;
         var closest = ray.t_max;
-        var best: ?HitRecord = null;
         for (self.instances) |inst| {
             if (!inst.bbox.intersect(ray, ray.t_min, closest)) continue;
-            if (inst.intersect(ray, ray.t_min, closest)) |hit| {
-                closest = hit.t;
-                best = hit;
+            if (inst.intersect(ray, ray.t_min, closest, &best)) {
+                closest = best.t;
+                found = true;
             }
         }
-        return best;
+        return if (found) best else null;
     }
 
     pub fn intersectAny(self: *BruteForce, ray: Ray, max_t: f32) bool {

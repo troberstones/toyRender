@@ -170,9 +170,11 @@ fn runInteractive(
 
         // Render one sample per pixel per frame for progressive display.
         if (spp < cfg.spp) {
+            // One sampler reused across all pixels — startPixel fully reinitialises
+            // both fields, so the initial value here is discarded immediately.
+            var sampler = Sampler{ .halton = .{ .index = 0, .pixel_offset = 0 } };
             for (0..cfg.height) |row| {
                 for (0..cfg.width) |col| {
-                    var sampler = Sampler{ .halton = .{ .index = spp, .pixel_offset = 0 } };
                     sampler.startPixel(@intCast(col), @intCast(row), spp);
                     const px = @as(f32, @floatFromInt(col)) / @as(f32, @floatFromInt(cfg.width));
                     const py = @as(f32, @floatFromInt(row)) / @as(f32, @floatFromInt(cfg.height));
