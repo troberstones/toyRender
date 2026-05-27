@@ -46,6 +46,23 @@ pub const Sphere = struct {
         };
     }
 
+    // Fast t-only test for shadow rays — skips UV/normal computation.
+    pub fn intersectT(self: Sphere, ray: Ray, t_min: f32, t_max: f32) ?f32 {
+        const oc = Vec3.sub(ray.origin, self.center);
+        const a = Vec3.lengthSq(ray.direction);
+        const half_b = Vec3.dot(oc, ray.direction);
+        const c = Vec3.lengthSq(oc) - self.radius * self.radius;
+        const discriminant = half_b * half_b - a * c;
+        if (discriminant < 0) return null;
+        const sqrt_d = @sqrt(discriminant);
+        var root = (-half_b - sqrt_d) / a;
+        if (root <= t_min or root >= t_max) {
+            root = (-half_b + sqrt_d) / a;
+            if (root <= t_min or root >= t_max) return null;
+        }
+        return root;
+    }
+
     pub fn bbox(self: Sphere) AABB {
         const r = Vec3.splat(self.radius);
         return .{
@@ -107,6 +124,14 @@ pub const Plane = struct {
             .material_index = self.material_index,
             .front_face = front_face,
         };
+    }
+
+    pub fn intersectT(self: Plane, ray: Ray, t_min: f32, t_max: f32) ?f32 {
+        const denom = Vec3.dot(self.normal, ray.direction);
+        if (@abs(denom) < 1e-8) return null;
+        const t = Vec3.dot(Vec3.sub(self.point, ray.origin), self.normal) / denom;
+        if (t < t_min or t > t_max) return null;
+        return t;
     }
 
     pub fn bbox(self: Plane) AABB {

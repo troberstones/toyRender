@@ -11,6 +11,7 @@ pub const BruteForce = struct {
         var closest = ray.t_max;
         var best: ?HitRecord = null;
         for (self.instances) |inst| {
+            if (!inst.bbox.intersect(ray, ray.t_min, closest)) continue;
             if (inst.intersect(ray, ray.t_min, closest)) |hit| {
                 closest = hit.t;
                 best = hit;
@@ -21,7 +22,8 @@ pub const BruteForce = struct {
 
     pub fn intersectAny(self: *BruteForce, ray: Ray, max_t: f32) bool {
         for (self.instances) |inst| {
-            if (inst.intersect(ray, ray.t_min, max_t) != null) return true;
+            if (!inst.bbox.intersect(ray, ray.t_min, max_t)) continue;
+            if (inst.intersectT(ray, ray.t_min, max_t) != null) return true;
         }
         return false;
     }

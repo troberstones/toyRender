@@ -43,6 +43,12 @@ pub const Geometry = union(enum) {
         };
     }
 
+    pub fn intersectT(self: Geometry, ray: Ray, t_min: f32, t_max: f32) ?f32 {
+        return switch (self) {
+            inline else => |g| g.intersectT(ray, t_min, t_max),
+        };
+    }
+
     pub fn bbox(self: Geometry) AABB {
         return switch (self) {
             inline else => |g| g.bbox(),

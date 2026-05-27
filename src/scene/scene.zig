@@ -23,11 +23,11 @@ pub const Scene = struct {
     alloc: std.mem.Allocator,
 
     pub fn intersect(self: *const Scene, ray: Ray) ?HitRecord {
-        // TODO: route through accel structure
-        // For now, brute-force over instances
         var closest = ray.t_max;
         var best: ?HitRecord = null;
         for (self.instances) |*inst| {
+            // Instance.intersect includes world_bbox pre-cull; shrinking t_max
+            // lets it also reject instances beyond the current closest hit.
             if (inst.intersect(ray, ray.t_min, closest)) |hit| {
                 closest = hit.t;
                 best = hit;
@@ -38,7 +38,7 @@ pub const Scene = struct {
 
     pub fn intersectAny(self: *const Scene, ray: Ray, max_t: f32) bool {
         for (self.instances) |*inst| {
-            if (inst.intersect(ray, ray.t_min, max_t) != null) return true;
+            if (inst.intersectT(ray, ray.t_min, max_t) != null) return true;
         }
         return false;
     }

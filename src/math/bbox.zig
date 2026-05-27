@@ -44,45 +44,18 @@ pub const AABB = struct {
         return 2.0 * (d.x * d.y + d.y * d.z + d.z * d.x);
     }
 
-    // Slab method; returns false if no intersection in [t_min, t_max].
-    pub fn intersect(self: AABB, ray: Ray) bool {
-        var t_min = ray.t_min;
-        var t_max = ray.t_max;
-
-        inline for ([_]usize{ 0, 1, 2 }) |axis| {
-            const dir_comp = switch (axis) {
-                0 => ray.direction.x,
-                1 => ray.direction.y,
-                2 => ray.direction.z,
-                else => unreachable,
-            };
-            const orig_comp = switch (axis) {
-                0 => ray.origin.x,
-                1 => ray.origin.y,
-                2 => ray.origin.z,
-                else => unreachable,
-            };
-            const mn = switch (axis) {
-                0 => self.min.x,
-                1 => self.min.y,
-                2 => self.min.z,
-                else => unreachable,
-            };
-            const mx = switch (axis) {
-                0 => self.max.x,
-                1 => self.max.y,
-                2 => self.max.z,
-                else => unreachable,
-            };
-            const inv = 1.0 / dir_comp;
-            var t0 = (mn - orig_comp) * inv;
-            var t1 = (mx - orig_comp) * inv;
-            if (inv < 0.0) std.mem.swap(f32, &t0, &t1);
-            t_min = @max(t_min, t0);
-            t_max = @min(t_max, t1);
-            if (t_max < t_min) return false;
-        }
-        return true;
+    // Slab method using precomputed inv_dir; returns false if no intersection in [t_min, t_max].
+    // @min/@max handle negative inv_dir without a branch (IEEE 754 safe).
+    pub fn intersect(self: AABB, ray: Ray, t_min: f32, t_max: f32) bool {
+        const tx0 = (self.min.x - ray.origin.x) * ray.inv_dir.x;
+        const tx1 = (self.max.x - ray.origin.x) * ray.inv_dir.x;
+        const ty0 = (self.min.y - ray.origin.y) * ray.inv_dir.y;
+        const ty1 = (self.max.y - ray.origin.y) * ray.inv_dir.y;
+        const tz0 = (self.min.z - ray.origin.z) * ray.inv_dir.z;
+        const tz1 = (self.max.z - ray.origin.z) * ray.inv_dir.z;
+        const t_enter = @max(@min(tx0, tx1), @max(@min(ty0, ty1), @min(tz0, tz1)));
+        const t_exit  = @min(@max(tx0, tx1), @min(@max(ty0, ty1), @max(tz0, tz1)));
+        return @max(t_enter, t_min) <= @min(t_exit, t_max);
     }
 
     // Longest axis index (0=x, 1=y, 2=z).

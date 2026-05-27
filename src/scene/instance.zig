@@ -13,19 +13,34 @@ pub const Instance = struct {
     object_to_world: Mat4,
     world_to_object: Mat4,
     material_index: u32,
+    world_bbox: AABB,
+
+    pub fn init(geo: Geometry, object_to_world: Mat4, world_to_object: Mat4, material_index: u32) Instance {
+        var self = Instance{
+            .geometry = geo,
+            .object_to_world = object_to_world,
+            .world_to_object = world_to_object,
+            .material_index = material_index,
+            .world_bbox = undefined,
+        };
+        self.world_bbox = self.bbox();
+        return self;
+    }
 
     pub fn intersect(self: *const Instance, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
-        // Transform ray into object space.
+        if (!self.world_bbox.intersect(ray, t_min, t_max)) return null;
+
+        const obj_dir = Mat4.transformDirection(self.world_to_object, ray.direction);
         const o_ray = Ray{
             .origin = Mat4.transformPoint(self.world_to_object, ray.origin),
-            .direction = Mat4.transformDirection(self.world_to_object, ray.direction),
+            .direction = obj_dir,
+            .inv_dir = Vec3.init(1.0 / obj_dir.x, 1.0 / obj_dir.y, 1.0 / obj_dir.z),
             .t_min = t_min,
             .t_max = t_max,
         };
 
         var hit = self.geometry.intersect(o_ray, t_min, t_max) orelse return null;
 
-        // Transform result back to world space.
         hit.point = Mat4.transformPoint(self.object_to_world, hit.point);
         hit.normal = Mat4.transformNormal(self.world_to_object, hit.normal);
         hit.shading_normal = Mat4.transformNormal(self.world_to_object, hit.shading_normal);
@@ -33,9 +48,23 @@ pub const Instance = struct {
         return hit;
     }
 
+    // Fast t-only test for shadow rays — skips normal/UV/transform-back.
+    pub fn intersectT(self: *const Instance, ray: Ray, t_min: f32, t_max: f32) ?f32 {
+        if (!self.world_bbox.intersect(ray, t_min, t_max)) return null;
+
+        const obj_dir = Mat4.transformDirection(self.world_to_object, ray.direction);
+        const o_ray = Ray{
+            .origin = Mat4.transformPoint(self.world_to_object, ray.origin),
+            .direction = obj_dir,
+            .inv_dir = Vec3.init(1.0 / obj_dir.x, 1.0 / obj_dir.y, 1.0 / obj_dir.z),
+            .t_min = t_min,
+            .t_max = t_max,
+        };
+        return self.geometry.intersectT(o_ray, t_min, t_max);
+    }
+
     pub fn bbox(self: Instance) AABB {
         const local = self.geometry.bbox();
-        // Transform all 8 corners and compute world-space AABB.
         const corners = [8]Vec3{
             Vec3.init(local.min.x, local.min.y, local.min.z),
             Vec3.init(local.max.x, local.min.y, local.min.z),

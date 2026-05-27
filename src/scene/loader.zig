@@ -72,17 +72,17 @@ pub const SceneLoader = struct {
         const id = Mat4.identity();
 
         // Floor
-        instances[0] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(0, -100.5, -1), .radius = 100, .material_index = 0 } }, .object_to_world = id, .world_to_object = id, .material_index = 0 };
+        instances[0] = Instance.init(.{ .sphere = .{ .center = Vec3.init(0, -100.5, -1), .radius = 100, .material_index = 0 } }, id, id, 0);
         // Red wall (left)
-        instances[1] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(-101.5, 0, -1), .radius = 100, .material_index = 1 } }, .object_to_world = id, .world_to_object = id, .material_index = 1 };
+        instances[1] = Instance.init(.{ .sphere = .{ .center = Vec3.init(-101.5, 0, -1), .radius = 100, .material_index = 1 } }, id, id, 1);
         // Green wall (right)
-        instances[2] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(101.5, 0, -1), .radius = 100, .material_index = 2 } }, .object_to_world = id, .world_to_object = id, .material_index = 2 };
+        instances[2] = Instance.init(.{ .sphere = .{ .center = Vec3.init(101.5, 0, -1), .radius = 100, .material_index = 2 } }, id, id, 2);
         // White small sphere
-        instances[3] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(-0.5, 0, -1.5), .radius = 0.5, .material_index = 0 } }, .object_to_world = id, .world_to_object = id, .material_index = 0 };
+        instances[3] = Instance.init(.{ .sphere = .{ .center = Vec3.init(-0.5, 0, -1.5), .radius = 0.5, .material_index = 0 } }, id, id, 0);
         // Mirror sphere
-        instances[4] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(0.5, 0, -1), .radius = 0.5, .material_index = 4 } }, .object_to_world = id, .world_to_object = id, .material_index = 4 };
+        instances[4] = Instance.init(.{ .sphere = .{ .center = Vec3.init(0.5, 0, -1), .radius = 0.5, .material_index = 4 } }, id, id, 4);
         // Ceiling light sphere
-        instances[5] = .{ .geometry = .{ .sphere = .{ .center = Vec3.init(0, 101.3, -1), .radius = 100, .material_index = 3 } }, .object_to_world = id, .world_to_object = id, .material_index = 3 };
+        instances[5] = Instance.init(.{ .sphere = .{ .center = Vec3.init(0, 101.3, -1), .radius = 100, .material_index = 3 } }, id, id, 3);
 
         const lights = try alloc.alloc(Light, 1);
         lights[0] = .{ .point = .{ .position = Vec3.init(0, 1.2, -1), .intensity = Spectrum.splat(3.0) } };
