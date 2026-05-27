@@ -84,14 +84,16 @@ pub const Vec3 = struct {
         return @abs(a.x) < eps and @abs(a.y) < eps and @abs(a.z) < eps;
     }
 
-    // Build an orthonormal basis (tangent, bitangent) around `n`.
+    // Build an orthonormal basis (tangent, bitangent) around unit vector `n`.
+    // Branchless method from Duff et al. 2017, "Building an Orthonormal Basis,
+    // Revisited" — produces an orthonormal frame with no sqrt and no normalize.
     pub fn buildOrthoFrame(n: Vec3) [2]Vec3 {
-        const t = if (@abs(n.x) > 0.9)
-            Vec3.init(0, 1, 0)
-        else
-            Vec3.init(1, 0, 0);
-        const b = normalize(cross(n, t));
-        return .{ normalize(cross(b, n)), b };
+        const s: f32 = if (n.z >= 0.0) 1.0 else -1.0; // copysign(1, n.z)
+        const a = -1.0 / (s + n.z);
+        const b = n.x * n.y * a;
+        const t = Vec3.init(1.0 + s * n.x * n.x * a, s * b, -s * n.x);
+        const bt = Vec3.init(b, s + n.y * n.y * a, -n.y);
+        return .{ t, bt };
     }
 
     // Transform from tangent space (z-up) to world space given normal n.

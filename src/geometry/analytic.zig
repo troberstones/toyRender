@@ -31,19 +31,25 @@ pub const Sphere = struct {
         const front_face = Vec3.dot(ray.direction, outward_normal) < 0;
         const normal = if (front_face) outward_normal else Vec3.neg(outward_normal);
 
-        // Spherical UV (longitude/latitude)
-        const theta = std.math.acos(-outward_normal.y);
-        const phi = std.math.atan2(-outward_normal.z, outward_normal.x) + std.math.pi;
-
         return HitRecord{
             .t = root,
             .point = point,
             .normal = normal,
             .shading_normal = normal,
-            .uv = .{ phi / (2.0 * std.math.pi), theta / std.math.pi },
+            // UV deferred: the acos/atan2 spherical mapping was ~23% of render
+            // time and no current material reads it. Call sphericalUv() on demand.
+            .uv = .{ 0, 0 },
             .material_index = self.material_index,
             .front_face = front_face,
         };
+    }
+
+    // Spherical (longitude/latitude) UV from an outward unit normal.
+    // Kept out of intersect() — compute on demand when a texture actually needs it.
+    pub fn sphericalUv(outward_normal: Vec3) [2]f32 {
+        const theta = std.math.acos(@max(-1.0, @min(1.0, -outward_normal.y)));
+        const phi = std.math.atan2(-outward_normal.z, outward_normal.x) + std.math.pi;
+        return .{ phi / (2.0 * std.math.pi), theta / std.math.pi };
     }
 
     // Fast t-only test for shadow rays — skips UV/normal computation.

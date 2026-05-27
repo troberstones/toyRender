@@ -3,18 +3,25 @@ const Vec3 = @import("vec3.zig").Vec3;
 pub const Ray = struct {
     origin: Vec3,
     direction: Vec3, // must be normalized
-    inv_dir: Vec3,   // 1/direction, precomputed for AABB slab tests
+    // 1/direction, precomputed for AABB slab tests. Only valid for rays built
+    // via init/initNormalized; defaults to undefined so callers that never run
+    // an AABB test (e.g. object-space rays) can skip the 3 divisions.
+    inv_dir: Vec3 = undefined,
     t_min: f32 = 1e-4,
     t_max: f32 = std.math.floatMax(f32),
 
     const std = @import("std");
 
     pub fn init(origin: Vec3, direction: Vec3) Ray {
-        const d = Vec3.normalize(direction);
+        return initNormalized(origin, Vec3.normalize(direction));
+    }
+
+    /// Like init but assumes `direction` is already unit length — skips the normalize.
+    pub fn initNormalized(origin: Vec3, direction: Vec3) Ray {
         return .{
             .origin = origin,
-            .direction = d,
-            .inv_dir = Vec3.init(1.0 / d.x, 1.0 / d.y, 1.0 / d.z),
+            .direction = direction,
+            .inv_dir = Vec3.init(1.0 / direction.x, 1.0 / direction.y, 1.0 / direction.z),
         };
     }
 

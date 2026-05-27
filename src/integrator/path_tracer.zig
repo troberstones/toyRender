@@ -99,7 +99,9 @@ pub const PathTracer = struct {
                 throughput = Spectrum.scale(throughput, 1.0 / (1.0 - q));
             }
 
-            ray = Ray.init(hit.point, bsdf_sample.wi);
+            // bsdf_sample.wi is already unit length (built from an orthonormal
+            // basis / reflection), so skip the redundant normalize.
+            ray = Ray.initNormalized(hit.point, bsdf_sample.wi);
         }
 
         return radiance;

@@ -1,3 +1,4 @@
+const std = @import("std");
 const math = @import("math");
 const Spectrum = math.Spectrum;
 const Vec3 = math.Vec3;
@@ -48,7 +49,15 @@ pub const DebugView = struct {
                 const d = @min(hit.t / self.depth_scale, 1.0);
                 return Spectrum.splat(d);
             },
-            .uv => Spectrum.init(hit.uv[0], hit.uv[1], 0),
+            .uv => {
+                // Sphere UV is deferred out of intersect(); derive spherical UV
+                // from the surface normal here (mirrors Sphere.sphericalUv). For
+                // textured meshes this would instead read hit.uv.
+                const n = hit.normal;
+                const theta = std.math.acos(@max(-1.0, @min(1.0, -n.y)));
+                const phi = std.math.atan2(-n.z, n.x) + std.math.pi;
+                return Spectrum.init(phi / (2.0 * std.math.pi), theta / std.math.pi, 0);
+            },
             .path_length => Spectrum.splat(0), // N/A for direct debug view
         };
     }

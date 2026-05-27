@@ -14,6 +14,8 @@ pub const Instance = struct {
     world_to_object: Mat4,
     material_index: u32,
     world_bbox: AABB,
+    // True when both transforms are the identity — lets us skip all matrix work.
+    is_identity: bool,
 
     pub fn init(geo: Geometry, object_to_world: Mat4, world_to_object: Mat4, material_index: u32) Instance {
         var self = Instance{
@@ -22,6 +24,7 @@ pub const Instance = struct {
             .world_to_object = world_to_object,
             .material_index = material_index,
             .world_bbox = undefined,
+            .is_identity = Mat4.isIdentity(object_to_world),
         };
         self.world_bbox = self.bbox();
         return self;
@@ -30,11 +33,17 @@ pub const Instance = struct {
     pub fn intersect(self: *const Instance, ray: Ray, t_min: f32, t_max: f32) ?HitRecord {
         if (!self.world_bbox.intersect(ray, t_min, t_max)) return null;
 
-        const obj_dir = Mat4.transformDirection(self.world_to_object, ray.direction);
+        // Identity transform: object space == world space, no matrix work needed.
+        if (self.is_identity) {
+            var hit = self.geometry.intersect(ray, t_min, t_max) orelse return null;
+            hit.material_index = self.material_index;
+            return hit;
+        }
+
         const o_ray = Ray{
             .origin = Mat4.transformPoint(self.world_to_object, ray.origin),
-            .direction = obj_dir,
-            .inv_dir = Vec3.init(1.0 / obj_dir.x, 1.0 / obj_dir.y, 1.0 / obj_dir.z),
+            .direction = Mat4.transformDirection(self.world_to_object, ray.direction),
+            // inv_dir left default: no geometry consumes the object-space reciprocal.
             .t_min = t_min,
             .t_max = t_max,
         };
@@ -52,11 +61,13 @@ pub const Instance = struct {
     pub fn intersectT(self: *const Instance, ray: Ray, t_min: f32, t_max: f32) ?f32 {
         if (!self.world_bbox.intersect(ray, t_min, t_max)) return null;
 
-        const obj_dir = Mat4.transformDirection(self.world_to_object, ray.direction);
+        if (self.is_identity) {
+            return self.geometry.intersectT(ray, t_min, t_max);
+        }
+
         const o_ray = Ray{
             .origin = Mat4.transformPoint(self.world_to_object, ray.origin),
-            .direction = obj_dir,
-            .inv_dir = Vec3.init(1.0 / obj_dir.x, 1.0 / obj_dir.y, 1.0 / obj_dir.z),
+            .direction = Mat4.transformDirection(self.world_to_object, ray.direction),
             .t_min = t_min,
             .t_max = t_max,
         };

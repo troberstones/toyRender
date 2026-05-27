@@ -92,10 +92,13 @@ fn renderOffline(
     // Print a live progress line to stderr roughly once per second.
     var last_progress_ns: i128 = 0;
 
+    // One sampler reused across all samples — startPixel fully reseeds it each
+    // iteration, so there's no need to reconstruct (and double-init) per pixel.
+    var sampler = Sampler{ .independent = undefined };
+
     for (0..cfg.spp) |spp_idx| {
         for (0..cfg.height) |row| {
             for (0..cfg.width) |col| {
-                var sampler = Sampler{ .independent = sampler_mod.Independent.init(0) };
                 sampler.startPixel(@intCast(col), @intCast(row), @intCast(spp_idx));
 
                 const px = (@as(f32, @floatFromInt(col)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.width));

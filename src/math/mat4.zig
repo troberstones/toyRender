@@ -14,6 +14,18 @@ pub const Mat4 = struct {
         } };
     }
 
+    // Exact comparison against the identity matrix. Identity transforms are
+    // constructed with exact 0.0/1.0, so equality is reliable here.
+    pub fn isIdentity(m: Mat4) bool {
+        const id = identity();
+        for (0..4) |c| {
+            for (0..4) |r| {
+                if (m.cols[c][r] != id.cols[c][r]) return false;
+            }
+        }
+        return true;
+    }
+
     pub fn translate(tx: f32, ty: f32, tz: f32) Mat4 {
         var m = identity();
         m.cols[3][0] = tx;
