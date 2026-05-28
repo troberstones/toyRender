@@ -28,6 +28,19 @@ pub const Counters = struct {
         _ = self.samples_completed.fetchAdd(n, .monotonic);
     }
 
+    // Merge this thread's local ray counters into the global atomics and reset them.
+    // Call once per tile (not per ray) to avoid cache-line contention.
+    pub fn flushThreadLocal(self: *Counters) void {
+        if (thread_rays > 0) {
+            _ = self.rays_cast.fetchAdd(thread_rays, .monotonic);
+            thread_rays = 0;
+        }
+        if (thread_shadow_rays > 0) {
+            _ = self.shadow_rays.fetchAdd(thread_shadow_rays, .monotonic);
+            thread_shadow_rays = 0;
+        }
+    }
+
     pub fn elapsedNs(self: *const Counters) i128 {
         return monoNs() - self.start_ns;
     }
@@ -78,6 +91,11 @@ pub const Counters = struct {
 };
 
 pub var global = Counters{};
+
+// Per-thread accumulators — incremented without any atomic op on the hot path.
+// Call global.flushThreadLocal() once per tile to merge into the global counters.
+pub threadlocal var thread_rays: u64 = 0;
+pub threadlocal var thread_shadow_rays: u64 = 0;
 
 fn monoNs() i128 {
     var ts: std.c.timespec = undefined;

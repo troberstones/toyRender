@@ -8,6 +8,7 @@ const BxdfSample = @import("material.zig").BxdfSample;
 
 pub const Lambertian = struct {
     albedo: Spectrum,
+    emissive: Spectrum = .{ .r = 0, .g = 0, .b = 0 },
 
     pub fn eval(self: Lambertian, wo: Vec3, wi: Vec3, hit: HitRecord) Spectrum {
         _ = wo;
@@ -40,8 +41,7 @@ pub const Lambertian = struct {
     }
 
     pub fn emission(self: Lambertian) Spectrum {
-        _ = self;
-        return Spectrum.zero();
+        return self.emissive;
     }
 
     fn cosineSampleHemisphere(rng: [2]f32) Vec3 {

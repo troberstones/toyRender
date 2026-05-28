@@ -114,10 +114,52 @@ pub const Mat4 = struct {
         });
     }
 
-    // Inverse for affine matrices (no perspective).
+    // Inverse for affine matrices (no perspective) via 3x3 cofactor expansion.
     pub fn inverse(m: Mat4) Mat4 {
-        // TODO: implement full 4x4 inverse via cofactor expansion or LU
-        _ = m;
-        @panic("Mat4.inverse not yet implemented");
+        // Extract 3x3 linear submatrix; a[row][col] = m.cols[col][row].
+        const a00 = m.cols[0][0]; const a01 = m.cols[1][0]; const a02 = m.cols[2][0];
+        const a10 = m.cols[0][1]; const a11 = m.cols[1][1]; const a12 = m.cols[2][1];
+        const a20 = m.cols[0][2]; const a21 = m.cols[1][2]; const a22 = m.cols[2][2];
+
+        // Cofactors (signed minors) of A.
+        const c00 =  (a11 * a22 - a12 * a21);
+        const c01 = -(a10 * a22 - a12 * a20);
+        const c02 =  (a10 * a21 - a11 * a20);
+        const c10 = -(a01 * a22 - a02 * a21);
+        const c11 =  (a00 * a22 - a02 * a20);
+        const c12 = -(a00 * a21 - a01 * a20);
+        const c20 =  (a01 * a12 - a02 * a11);
+        const c21 = -(a00 * a12 - a02 * a10);
+        const c22 =  (a00 * a11 - a01 * a10);
+
+        const det = a00 * c00 + a01 * c01 + a02 * c02;
+        const s = 1.0 / det;
+
+        // A_inv[row][col] = cofactor(col, row) / det — stored column-major.
+        var r = Mat4.identity();
+        r.cols[0][0] = c00 * s; r.cols[0][1] = c01 * s; r.cols[0][2] = c02 * s;
+        r.cols[1][0] = c10 * s; r.cols[1][1] = c11 * s; r.cols[1][2] = c12 * s;
+        r.cols[2][0] = c20 * s; r.cols[2][1] = c21 * s; r.cols[2][2] = c22 * s;
+
+        // Translation: t_inv = -A_inv * t
+        const tx = m.cols[3][0]; const ty = m.cols[3][1]; const tz = m.cols[3][2];
+        r.cols[3][0] = -(r.cols[0][0] * tx + r.cols[1][0] * ty + r.cols[2][0] * tz);
+        r.cols[3][1] = -(r.cols[0][1] * tx + r.cols[1][1] * ty + r.cols[2][1] * tz);
+        r.cols[3][2] = -(r.cols[0][2] * tx + r.cols[1][2] * ty + r.cols[2][2] * tz);
+        return r;
+    }
+
+    // Camera-to-world look-at transform.  The camera looks along -Z in camera space
+    // (matching the PinholeCamera ray direction convention).
+    pub fn lookAt(from: Vec3, to: Vec3, up: Vec3) Mat4 {
+        const fwd = Vec3.normalize(Vec3.sub(to, from));
+        const r   = Vec3.normalize(Vec3.cross(fwd, up));
+        const u   = Vec3.cross(r, fwd);
+        return .{ .cols = .{
+            .{ r.x,    r.y,    r.z,    0 },
+            .{ u.x,    u.y,    u.z,    0 },
+            .{ -fwd.x, -fwd.y, -fwd.z, 0 },
+            .{ from.x, from.y, from.z, 1 },
+        }};
     }
 };

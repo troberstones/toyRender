@@ -143,10 +143,12 @@ pub fn build(b: *std.Build) void {
     });
     unit_tests.root_module.addImport("math", math_mod);
     unit_tests.root_module.addImport("geometry", geometry_mod);
+    unit_tests.root_module.addImport("accel", accel_mod);
     unit_tests.root_module.addImport("material", material_mod);
     unit_tests.root_module.addImport("scene", scene_mod);
     unit_tests.root_module.addImport("sampler", sampler_mod);
     unit_tests.root_module.addImport("film", film_mod);
+    unit_tests.root_module.addImport("integrator", integrator_mod);
     unit_tests.root_module.addImport("perf", perf_mod);
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");

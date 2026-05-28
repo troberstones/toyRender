@@ -1,3 +1,6 @@
 .zig-cache/
 zig-out/
 .claude/
+bar.png
+foo.png
+test_cimport

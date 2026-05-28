@@ -7,6 +7,8 @@ const geometry = @import("geometry");
 const Geometry = geometry.Geometry;
 const HitRecord = geometry.HitRecord;
 const SurfaceSample = geometry.SurfaceSample;
+const accel = @import("accel");
+const InstanceRef = accel.InstanceRef;
 
 pub const Instance = struct {
     geometry: Geometry,
@@ -73,6 +75,25 @@ pub const Instance = struct {
             .t_max = t_max,
         };
         return self.geometry.intersectT(o_ray, t_min, t_max);
+    }
+
+    pub fn toRef(self: *const Instance) InstanceRef {
+        return .{
+            .bbox = self.world_bbox,
+            .ptr = self,
+            .intersectFn = struct {
+                fn f(ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32, out: *HitRecord) bool {
+                    const i: *const Instance = @ptrCast(@alignCast(ptr));
+                    return i.intersect(ray, t_min, t_max, out);
+                }
+            }.f,
+            .intersectTFn = struct {
+                fn f(ptr: *const anyopaque, ray: Ray, t_min: f32, t_max: f32) ?f32 {
+                    const i: *const Instance = @ptrCast(@alignCast(ptr));
+                    return i.intersectT(ray, t_min, t_max);
+                }
+            }.f,
+        };
     }
 
     pub fn bbox(self: Instance) AABB {

@@ -24,30 +24,26 @@ pub const Scene = struct {
     alloc: std.mem.Allocator,
 
     pub fn intersect(self: *const Scene, ray: Ray) ?HitRecord {
-        perf.global.addRay();
-        var best: HitRecord = undefined;
-        var found = false;
-        var closest = ray.t_max;
-        for (self.instances) |*inst| {
-            // Instance writes directly into best; shrinking closest lets the
-            // bbox pre-cull reject instances behind the current best hit.
-            if (inst.intersect(ray, ray.t_min, closest, &best)) {
-                closest = best.t;
-                found = true;
-            }
-        }
-        return if (found) best else null;
+        perf.thread_rays += 1;
+        return self.accel.intersect(ray);
     }
 
     pub fn intersectAny(self: *const Scene, ray: Ray, max_t: f32) bool {
-        perf.global.addShadowRay();
-        for (self.instances) |*inst| {
-            if (inst.intersectT(ray, ray.t_min, max_t) != null) return true;
-        }
-        return false;
+        perf.thread_shadow_rays += 1;
+        return self.accel.intersectAny(ray, max_t);
     }
 
     pub fn deinit(self: *Scene) void {
+        self.accel.deinit(self.alloc);
+        for (self.instances) |inst| {
+            switch (inst.geometry) {
+                .triangle_mesh => |mesh| {
+                    self.alloc.free(@constCast(mesh.vertices));
+                    self.alloc.free(@constCast(mesh.triangles));
+                },
+                else => {},
+            }
+        }
         self.alloc.free(self.instances);
         self.alloc.free(self.materials);
         self.alloc.free(self.lights);

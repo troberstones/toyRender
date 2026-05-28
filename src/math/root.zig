@@ -3,4 +3,5 @@ pub const Point3 = Vec3;
 pub const Mat4 = @import("mat4.zig").Mat4;
 pub const Ray = @import("ray.zig").Ray;
 pub const AABB = @import("bbox.zig").AABB;
+pub const AabbPack = @import("bbox.zig").AabbPack;
 pub const Spectrum = @import("spectrum.zig").Spectrum;

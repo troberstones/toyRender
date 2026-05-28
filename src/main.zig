@@ -35,7 +35,64 @@ const Config = struct {
     integrator: enum { path, direct, debug } = .path,
     debug_mode: DebugView.DebugMode = .normals,
     viz_paths: bool = false,
+    threads: u32 = 0, // 0 = auto-detect via std.Thread.getCpuCount()
 };
+
+/// One 16×16 (or smaller at image boundary) tile of pixels.
+const Tile = struct {
+    x0: u32,
+    y0: u32,
+    x1: u32, // exclusive
+    y1: u32, // exclusive
+};
+
+/// Context passed to each worker thread.
+const WorkerCtx = struct {
+    tiles: []const Tile,
+    counter: *std.atomic.Value(u32),
+    scene: *const Scene,
+    film: *Film,
+    integrator: Integrator,
+    spp_idx: u32,
+    cfg: *const Config,
+};
+
+fn workerFn(ctx: WorkerCtx) void {
+    // Per-thread arena; reset after each tile to avoid unbounded growth.
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    // Per-thread sampler; startPixel fully re-seeds it each pixel, so the
+    // initial payload value is irrelevant.
+    var sampler = Sampler{ .independent = undefined };
+
+    while (true) {
+        const idx = ctx.counter.fetchAdd(1, .monotonic);
+        if (idx >= ctx.tiles.len) break;
+
+        const tile = ctx.tiles[idx];
+        _ = arena.reset(.retain_capacity);
+        const tile_alloc = arena.allocator();
+
+        var row = tile.y0;
+        while (row < tile.y1) : (row += 1) {
+            var col = tile.x0;
+            while (col < tile.x1) : (col += 1) {
+                sampler.startPixel(col, row, ctx.spp_idx);
+
+                const px = (@as(f32, @floatFromInt(col)) + sampler.next1d()) / @as(f32, @floatFromInt(ctx.cfg.width));
+                const py = (@as(f32, @floatFromInt(row)) + sampler.next1d()) / @as(f32, @floatFromInt(ctx.cfg.height));
+                const ray = ctx.scene.camera.generateRay(px, py, sampler.next2d());
+
+                const value = ctx.integrator.li(ray, ctx.scene, &sampler, tile_alloc);
+                ctx.film.addSample(col, row, value);
+                perf.global.addSamples(1);
+            }
+        }
+        // Flush thread-local ray counters once per tile — avoids per-ray atomic contention.
+        perf.global.flushThreadLocal();
+    }
+}
 
 pub fn main(init: std.process.Init.Minimal) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -92,38 +149,100 @@ fn renderOffline(
     // Print a live progress line to stderr roughly once per second.
     var last_progress_ns: i128 = 0;
 
-    // One sampler reused across all samples — startPixel fully reseeds it each
-    // iteration, so there's no need to reconstruct (and double-init) per pixel.
-    var sampler = Sampler{ .independent = undefined };
+    // ------------------------------------------------------------------ tiles
+    const tile_size: u32 = 16;
+    const tiles_x = (cfg.width + tile_size - 1) / tile_size;
+    const tiles_y = (cfg.height + tile_size - 1) / tile_size;
+    const n_tiles = tiles_x * tiles_y;
+
+    const tiles = try alloc.alloc(Tile, n_tiles);
+    defer alloc.free(tiles);
+
+    for (0..tiles_y) |ty| {
+        for (0..tiles_x) |tx| {
+            const x0: u32 = @intCast(tx * tile_size);
+            const y0: u32 = @intCast(ty * tile_size);
+            tiles[ty * tiles_x + tx] = .{
+                .x0 = x0,
+                .y0 = y0,
+                .x1 = @min(x0 + tile_size, cfg.width),
+                .y1 = @min(y0 + tile_size, cfg.height),
+            };
+        }
+    }
+
+    // ---------------------------------------------------------------- threads
+    // viz_paths uses PathViz which is single-threaded, so fall back to 1 thread.
+    const n_threads: u32 = if (cfg.viz_paths) 1 else
+        if (cfg.threads != 0) cfg.threads
+        else @intCast(std.Thread.getCpuCount() catch 4);
+
+    var counter = std.atomic.Value(u32).init(0);
 
     for (0..cfg.spp) |spp_idx| {
-        for (0..cfg.height) |row| {
-            for (0..cfg.width) |col| {
-                sampler.startPixel(@intCast(col), @intCast(row), @intCast(spp_idx));
+        // Reset tile counter for this spp pass.
+        counter.store(0, .seq_cst);
 
-                const px = (@as(f32, @floatFromInt(col)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.width));
-                const py = (@as(f32, @floatFromInt(row)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.height));
-                const ray = scene.camera.generateRay(px, py, sampler.next2d());
-                // Ray counting now happens inside scene.intersect / scene.intersectAny.
+        if (n_threads <= 1 or cfg.viz_paths) {
+            // ---- single-threaded path (supports viz_paths) ----
+            var sampler = Sampler{ .independent = undefined };
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer arena.deinit();
 
-                const value = if (cfg.viz_paths) blk: {
-                    var rec = PathRecord.init(alloc);
-                    defer rec.deinit();
-                    const v = integrator.liRecord(ray, scene, &sampler, alloc, &rec);
-                    try path_viz.addRecord(rec);
-                    break :blk v;
-                } else integrator.li(ray, scene, &sampler, alloc);
+            for (tiles) |tile| {
+                _ = arena.reset(.retain_capacity);
+                const tile_alloc = arena.allocator();
 
-                film.addSample(@intCast(col), @intCast(row), value);
-                perf.global.addSamples(1);
+                var row = tile.y0;
+                while (row < tile.y1) : (row += 1) {
+                    var col = tile.x0;
+                    while (col < tile.x1) : (col += 1) {
+                        sampler.startPixel(col, row, @intCast(spp_idx));
+
+                        const px = (@as(f32, @floatFromInt(col)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.width));
+                        const py = (@as(f32, @floatFromInt(row)) + sampler.next1d()) / @as(f32, @floatFromInt(cfg.height));
+                        const ray = scene.camera.generateRay(px, py, sampler.next2d());
+
+                        const value = if (cfg.viz_paths) blk: {
+                            var rec = PathRecord.init(tile_alloc);
+                            defer rec.deinit();
+                            const v = integrator.liRecord(ray, scene, &sampler, tile_alloc, &rec);
+                            try path_viz.addRecord(rec);
+                            break :blk v;
+                        } else integrator.li(ray, scene, &sampler, tile_alloc);
+
+                        film.addSample(col, row, value);
+                        perf.global.addSamples(1);
+                    }
+                }
+                perf.global.flushThreadLocal();
             }
+        } else {
+            // ---- multi-threaded path ----
+            const ctx = WorkerCtx{
+                .tiles = tiles,
+                .counter = &counter,
+                .scene = scene,
+                .film = film,
+                .integrator = integrator,
+                .spp_idx = @intCast(spp_idx),
+                .cfg = &cfg,
+            };
 
-            // Refresh the live Mrays/s line at most once per second.
-            const now = perf.global.elapsedNs();
-            if (now - last_progress_ns >= std.time.ns_per_s) {
-                last_progress_ns = now;
-                perf.global.printProgress(@intCast(spp_idx + 1), @intCast(cfg.spp));
+            const thread_list = try alloc.alloc(std.Thread, n_threads);
+            defer alloc.free(thread_list);
+
+            for (thread_list) |*t| {
+                t.* = try std.Thread.spawn(.{}, workerFn, .{ctx});
             }
+            for (thread_list) |t| t.join();
+        }
+
+        // Refresh the live Mrays/s line at most once per second.
+        const now = perf.global.elapsedNs();
+        if (now - last_progress_ns >= std.time.ns_per_s) {
+            last_progress_ns = now;
+            perf.global.printProgress(@intCast(spp_idx + 1), @intCast(cfg.spp));
         }
     }
     std.debug.print("\n", .{}); // finish the \r progress line
@@ -249,6 +368,10 @@ fn parseArgs(args: std.process.Args) Config {
                 std.process.fatal("--debug-mode: unknown value '{s}'\n", .{val});
         } else if (eql(arg, "--viz-paths")) {
             cfg.viz_paths = true;
+        } else if (eql(arg, "--threads")) {
+            const val = it.next() orelse std.process.fatal("--threads requires a value\n", .{});
+            cfg.threads = std.fmt.parseInt(u32, val, 10) catch
+                std.process.fatal("--threads: not a valid number\n", .{});
         } else {
             std.process.fatal("unknown argument '{s}' — try --help\n", .{arg});
         }
@@ -276,6 +399,7 @@ fn printUsage() void {
         \\  --integrator <path|direct|debug>    Integrator (default: path)
         \\  --debug-mode <normals|shading_normals|albedo|depth|uv|path_length>
         \\  --viz-paths                         Overlay path visualization
+        \\  --threads <n>                       Worker threads (default: CPU count)
         \\  --help, -h                          Show this help
         \\
     , .{});
